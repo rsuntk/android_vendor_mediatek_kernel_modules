@@ -43,6 +43,7 @@
  *                              C O N S T A N T S
  *******************************************************************************
  */
+#define IW_AUTH_WPA_VERSION_WPA3        0x00000008
 
 extern const struct net_device_ops wlan_netdev_ops;
 
@@ -1522,6 +1523,20 @@ int wlanParseAkmSuites(uint32_t *au4AkmSuites, uint32_t u4AkmSuitesCount,
 				       au4AkmSuites[i]);
 				return -EINVAL;
 			}
+		} else if (u4WpaVersion == IW_AUTH_WPA_VERSION_WPA3) {
+			switch (sme->crypto.akm_suites[0]) {
+			case WLAN_AKM_SUITE_SAE:
+				if (sme->auth_type == NL80211_AUTHTYPE_SAE)
+					eAuthMode = AUTH_MODE_WPA3_SAE;
+				else
+					eAuthMode = AUTH_MODE_OPEN;
+				u4AkmSuite = RSN_AKM_SUITE_SAE;
+				break;
+			default:
+				DBGLOG(REQ, WARN, "invalid Akm Suite (%d)\n",
+				       sme->crypto.akm_suites[0]);
+				return -EINVAL;
+			}
 		}
 
 		eAuthMode = rsnKeyMgmtToAuthMode(
@@ -1641,12 +1656,10 @@ int mtk_cfg80211_connect(struct wiphy *wiphy,
 
 	if (sme->crypto.wpa_versions & NL80211_WPA_VERSION_1)
 		prWpaInfo->u4WpaVersion = IW_AUTH_WPA_VERSION_WPA;
-	else if ((sme->crypto.wpa_versions & NL80211_WPA_VERSION_2)
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
-		|| (sme->crypto.wpa_versions & NL80211_WPA_VERSION_3)
-#endif
-		)
+	else if ((sme->crypto.wpa_versions & NL80211_WPA_VERSION_2))
 		prWpaInfo->u4WpaVersion = IW_AUTH_WPA_VERSION_WPA2;
+	else if ((sme->crypto.wpa_versions & NL80211_WPA_VERSION_3))
+		prWpaInfo->u4WpaVersion = IW_AUTH_WPA_VERSION_WPA3;
 	else
 		prWpaInfo->u4WpaVersion = IW_AUTH_WPA_VERSION_DISABLED;
 
@@ -2624,7 +2637,9 @@ int mtk_cfg80211_set_rekey_data(struct wiphy *wiphy,
 		ucBssIndex);
 
 	prGtkData->u4Proto = NL80211_WPA_VERSION_2;
-	if (prWpaInfo->u4WpaVersion == IW_AUTH_WPA_VERSION_WPA)
+	if (prWpaInfo->u4WpaVersion == IW_AUTH_WPA_VERSION_WPA3)
+		prGtkData->u4Proto = NL80211_WPA_VERSION_3;
+	else if (prWpaInfo->u4WpaVersion == IW_AUTH_WPA_VERSION_WPA)
 		prGtkData->u4Proto = NL80211_WPA_VERSION_1;
 
 	if (GET_SELECTOR_TYPE(prBssInfo->u4RsnSelectedPairwiseCipher) ==
